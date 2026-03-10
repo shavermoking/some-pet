@@ -103,3 +103,46 @@ func (b *Books) Update(ctx context.Context, id int, input models.UpdateBook) err
 	_, err := b.db.Exec(query, args...)
 	return err
 }
+
+func (b *Books) MarkOutOfStock(ctx context.Context, id int) error {
+	res, err := b.db.Exec("UPDATE books SET outOfStock = true WHERE id = $1", id)
+	if err != nil {
+		return err
+	}
+
+	rowsAffected, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rowsAffected == 0 {
+		return models.ErrBookNotFound
+	}
+
+	return nil
+}
+
+func (b *Books) GetRecommend(ctx context.Context) ([]models.Book, error) {
+	rows, err := b.db.QueryContext(ctx, `
+		SELECT id, title, author, year, outOfStock, rating
+		FROM books
+		ORDER BY 
+			CASE WHEN rating IS NOT NULL THEN rating END DESC,
+			year DESC
+		LIMIT 5
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	books := make([]models.Book, 0)
+	for rows.Next() {
+		var book models.Book
+		if err := rows.Scan(&book.ID, &book.Title, &book.Author, &book.Year, &book.OutOfStock, &book.Rating); err != nil {
+			return nil, err
+		}
+		books = append(books, book)
+	}
+
+	return books, rows.Err()
+}

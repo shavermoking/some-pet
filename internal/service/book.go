@@ -11,6 +11,8 @@ type BooksRepository interface {
 	GetAll(ctx context.Context) ([]models.Book, error)
 	Delete(ctx context.Context, id int) error
 	Update(ctx context.Context, id int, input models.UpdateBook) error
+	MarkOutOfStock(ctx context.Context, id int) error
+	GetRecommend(ctx context.Context) ([]models.Book, error)
 }
 
 type Books struct {
@@ -41,4 +43,12 @@ func (b *Books) Delete(ctx context.Context, id int) error {
 
 func (b *Books) Update(ctx context.Context, id int, input models.UpdateBook) error {
 	return b.repo.Update(ctx, id, input)
+}
+
+func (b *Books) MarkOutOfStock(ctx context.Context, id int) error {
+	return b.repo.MarkOutOfStock(ctx, id)
+}
+
+func (b *Books) GetRecommend(ctx context.Context) ([]models.Book, error) {
+	return b.repo.GetRecommend(ctx)
 }

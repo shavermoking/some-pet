@@ -14,4 +14,6 @@ func RegisterRouter(r *gin.Engine, h *handlers.Books) {
 	books.GET("/:id", h.GetByID)
 	books.DELETE("/:id", h.Delete)
 	books.PATCH("/:id", h.Update)
+	books.POST("/:id/mark-out-of-stock", h.MarkOutOfStock)
+	books.GET("/recommend", h.GetRecommend)
 }

@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"net/http"
 	"some-pet/internal/models"
 	"some-pet/internal/service"
@@ -122,4 +123,44 @@ func (h *Books) Update(c *gin.Context) {
 	}
 
 	c.Status(http.StatusOK)
+}
+
+func (h *Books) MarkOutOfStock(c *gin.Context) {
+	idParam := c.Param("id")
+
+	id, err := strconv.Atoi(idParam)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "invalid id",
+		})
+		return
+	}
+
+	err = h.service.MarkOutOfStock(c.Request.Context(), id)
+	if err != nil {
+		if errors.Is(err, models.ErrBookNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{
+				"error": "book not found",
+			})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": err.Error(),
+		})
+		return
+	}
+
+	c.Status(http.StatusOK)
+}
+
+func (h *Books) GetRecommend(c *gin.Context) {
+	books, err := h.service.GetRecommend(c.Request.Context())
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, books)
 }
