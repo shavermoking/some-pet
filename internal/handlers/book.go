@@ -19,24 +19,33 @@ func NewBooks(service *service.Books) *Books {
 }
 
 func (h *Books) Create(c *gin.Context) {
-	var book models.Book
+	var input models.CreateBook
 
-	if err := c.BindJSON(&book); err != nil {
+	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error": err.Error(),
+			"error": "некорректный формат данных: " + err.Error(),
 		})
 		return
 	}
 
-	err := h.service.Create(c.Request.Context(), book)
+	book := models.Book{
+		Title:      input.Title,
+		Author:     input.Author,
+		Year:       input.Year,
+		ISBN:       input.ISBN,
+		Rating:     input.Rating,
+		OutOfStock: false,
+	}
+
+	created, err := h.service.Create(c.Request.Context(), book)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": err.Error(),
+		c.JSON(http.StatusConflict, gin.H{
+			"error": "книга с таким ISBN уже существует или данные некорректны",
 		})
 		return
 	}
 
-	c.Status(http.StatusCreated)
+	c.JSON(http.StatusCreated, created)
 }
 
 func (h *Books) GetAll(c *gin.Context) {

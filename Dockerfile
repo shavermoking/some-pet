@@ -1,4 +1,4 @@
-FROM golang:1.23-alpine AS builder
+FROM golang:1.25-alpine AS builder
 
 WORKDIR /app
 
@@ -14,6 +14,8 @@ FROM alpine:3.20
 WORKDIR /app
 
 COPY --from=builder /app/bookshelf /app/bookshelf
+
+COPY migrations ./migrations
 
 RUN chmod +x /app/bookshelf
 

@@ -14,15 +14,20 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 )
 
 type MockBooksRepository struct {
 	mock.Mock
 }
 
-func (m *MockBooksRepository) Create(ctx context.Context, book models.Book) error {
+func (m *MockBooksRepository) Create(ctx context.Context, book models.Book) (*models.Book, error) {
 	args := m.Called(ctx, book)
-	return args.Error(0)
+
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*models.Book), args.Error(1)
 }
 
 func (m *MockBooksRepository) GetAll(ctx context.Context) ([]models.Book, error) {
@@ -77,9 +82,9 @@ func TestBooks_Create(t *testing.T) {
 	tests := []struct {
 		name           string
 		requestBody    interface{}
-		mockError      error
+		mockSetup      func(mockRepo *MockBooksRepository)
 		expectedStatus int
-		expectedBody   map[string]interface{}
+		expectedError  string
 	}{
 		{
 			name: "success",
@@ -90,68 +95,120 @@ func TestBooks_Create(t *testing.T) {
 				ISBN:   "123-456789",
 				Rating: 5,
 			},
-			mockError:      nil,
+			mockSetup: func(mockRepo *MockBooksRepository) {
+				mockRepo.On("Create", mock.Anything, models.Book{
+					Title:  "Test Book",
+					Author: "Test Author",
+					Year:   2024,
+					ISBN:   "123-456789",
+					Rating: 5,
+				}).Return(&models.Book{
+					ID:     1,
+					Title:  "Test Book",
+					Author: "Test Author",
+					Year:   2024,
+					ISBN:   "123-456789",
+					Rating: 5,
+				}, nil)
+			},
 			expectedStatus: http.StatusCreated,
+			expectedError:  "",
 		},
 		{
-			name: "invalid json",
+			name: "invalid json - wrong types",
 			requestBody: map[string]interface{}{
 				"title": 123,
 				"year":  "invalid",
 			},
-			mockError:      nil,
+			mockSetup:      func(mockRepo *MockBooksRepository) {},
 			expectedStatus: http.StatusBadRequest,
+			expectedError:  "некорректный формат данных",
 		},
 		{
-			name: "service error",
+			name: "service error - duplicate ISBN",
 			requestBody: models.Book{
 				Title:  "Test Book",
 				Author: "Test Author",
 				Year:   2024,
+				ISBN:   "123-456789",
+				Rating: 5,
 			},
-			mockError:      errors.New("database error"),
-			expectedStatus: http.StatusInternalServerError,
-			expectedBody: map[string]interface{}{
-				"error": "database error",
+			mockSetup: func(mockRepo *MockBooksRepository) {
+				mockRepo.On("Create", mock.Anything, models.Book{
+					Title:  "Test Book",
+					Author: "Test Author",
+					Year:   2024,
+					ISBN:   "123-456789",
+					Rating: 5,
+				}).Return(nil, errors.New("database error"))
 			},
+			expectedStatus: http.StatusConflict,
+			expectedError:  "книга с таким ISBN уже существует или данные некорректны",
+		},
+		{
+			name: "validation error - missing required fields",
+			requestBody: models.Book{
+				Title: "Test Book",
+			},
+			mockSetup:      func(mockRepo *MockBooksRepository) {},
+			expectedStatus: http.StatusBadRequest,
+			expectedError:  "некорректный формат данных",
+		},
+		{
+			name:           "invalid json - malformed",
+			requestBody:    "not a json",
+			mockSetup:      func(mockRepo *MockBooksRepository) {},
+			expectedStatus: http.StatusBadRequest,
+			expectedError:  "некорректный формат данных",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			mockRepo := new(MockBooksRepository)
+			tt.mockSetup(mockRepo)
+
 			serviceInstance := service.NewBooks(mockRepo)
 			handler := NewBooks(serviceInstance)
 			router := setupRouter(handler)
 
-			jsonBody, _ := json.Marshal(tt.requestBody)
-			req, _ := http.NewRequest(http.MethodPost, "/api/books/", bytes.NewBuffer(jsonBody))
-			req.Header.Set("Content-Type", "application/json")
+			var jsonBody []byte
+			var err error
 
-			if tt.name == "success" {
-				if book, ok := tt.requestBody.(models.Book); ok {
-					mockRepo.On("Create", mock.Anything, book).Return(tt.mockError)
-				}
-			} else if tt.name == "service error" {
-				if book, ok := tt.requestBody.(models.Book); ok {
-					mockRepo.On("Create", mock.Anything, book).Return(tt.mockError)
-				}
+			if strBody, ok := tt.requestBody.(string); ok && strBody == "not a json" {
+				jsonBody = []byte("{invalid json")
+			} else {
+				jsonBody, err = json.Marshal(tt.requestBody)
+				require.NoError(t, err)
 			}
+
+			req, err := http.NewRequest(http.MethodPost, "/api/books/", bytes.NewBuffer(jsonBody))
+			require.NoError(t, err)
+			req.Header.Set("Content-Type", "application/json")
 
 			w := httptest.NewRecorder()
 			router.ServeHTTP(w, req)
 
 			assert.Equal(t, tt.expectedStatus, w.Code)
 
-			if tt.expectedBody != nil {
-				var response map[string]interface{}
-				err := json.Unmarshal(w.Body.Bytes(), &response)
-				assert.NoError(t, err)
-				assert.Equal(t, tt.expectedBody, response)
+			var response map[string]interface{}
+			err = json.Unmarshal(w.Body.Bytes(), &response)
+			require.NoError(t, err)
+
+			if tt.expectedError != "" {
+				errorMsg, exists := response["error"]
+				assert.True(t, exists, "Response should contain error field")
+				assert.Contains(t, errorMsg, tt.expectedError,
+					"Error message should contain expected substring")
+			} else {
+				assert.Contains(t, response, "id")
+				assert.NotEmpty(t, response["id"])
 			}
 
-			if tt.name == "success" || tt.name == "service error" {
+			if tt.name == "success" || tt.name == "service error - duplicate ISBN" {
 				mockRepo.AssertExpectations(t)
+			} else {
+				mockRepo.AssertNotCalled(t, "Create")
 			}
 		})
 	}

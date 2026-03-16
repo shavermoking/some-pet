@@ -6,7 +6,7 @@ import (
 )
 
 type BooksRepository interface {
-	Create(ctx context.Context, book models.Book) error
+	Create(ctx context.Context, book models.Book) (*models.Book, error)
 	GetByID(ctx context.Context, id int) (models.Book, error)
 	GetAll(ctx context.Context) ([]models.Book, error)
 	Delete(ctx context.Context, id int) error
@@ -25,7 +25,9 @@ func NewBooks(repo BooksRepository) *Books {
 	}
 }
 
-func (b *Books) Create(ctx context.Context, book models.Book) error {
+var ErrValidationFailed = "ошибка валидации"
+
+func (b *Books) Create(ctx context.Context, book models.Book) (*models.Book, error) {
 	return b.repo.Create(ctx, book)
 }
 

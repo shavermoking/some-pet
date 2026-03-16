@@ -10,17 +10,13 @@ import (
 	"some-pet/internal/service"
 
 	"github.com/gin-gonic/gin"
-	"github.com/joho/godotenv"
 )
 
 func main() {
 
-	err := godotenv.Load()
-	if err != nil {
-		log.Println(".env not found")
-	}
-
 	db := database.NewPostgres()
+
+	database.RunMigrations()
 
 	bookRepo := repository.NewBooks(db)
 	bookService := service.NewBooks(bookRepo)
